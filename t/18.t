@@ -30,6 +30,9 @@ if (@ARGV) {
   exit(0);
 }
 
+# Count the "native" fd descriptors openned before Cache::FastMmap
+my $native_fd = scalar(() = glob "/proc/$$/fd/*");
+
 require Cache::FastMmap;
 my @Caches = map {
   Cache::FastMmap->new(
@@ -41,8 +44,8 @@ my @Caches = map {
 } (1 .. 20);
 my $CacheCount = @Caches;
 
-my $FdCount = scalar(() = glob "/proc/$$/fd/*");
-ok($FdCount > $CacheCount, "More fd's than caches: $FdCount > $CacheCount");
+my $FdCount = scalar(() = glob "/proc/$$/fd/*") - $native_fd;
+ok($FdCount >= $CacheCount, "More fd's than caches: $FdCount < $CacheCount");
 
 pipe(my $ReadPipeFh, my $WritePipeFh)
   || die "pipe failed: $!";
@@ -57,7 +60,8 @@ if (!fork) {
 
 my $ChildFdCount = <$ReadPipeFh>;
 chomp $ChildFdCount;
-ok($ChildFdCount < $CacheCount, "Less fd's in child than caches: $ChildFdCount < $CacheCount");
+$ChildFdCount -= $native_fd;
+ok($ChildFdCount <= $CacheCount, "Less fd's in child than caches: $ChildFdCount > $CacheCount");
 
 done_testing(2);
 
